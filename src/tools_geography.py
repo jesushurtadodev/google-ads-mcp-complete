@@ -31,6 +31,8 @@ class GeographyTools:
             googleads_service = client.get_service("GoogleAdsService")
             
             # Query geographic performance data
+            # Note: geographic_view.location_type filtering is done in Python
+            # because the enum value is not filterable via GAQL string literals
             query = f"""
                 SELECT
                     geographic_view.country_criterion_id,
@@ -49,7 +51,6 @@ class GeographyTools:
                     campaign.id
                 FROM geographic_view
                 WHERE segments.date DURING {date_range}
-                AND geographic_view.location_type = '{location_type}'
             """
             
             if campaign_id:

@@ -81,12 +81,21 @@ class CampaignTools:
                 channel_subtype_enum = client.enums.AdvertisingChannelSubTypeEnum
                 campaign.advertising_channel_sub_type = channel_subtype_enum.SHOPPING_COMPARISON_LISTING_ADS
             
-            # Set bidding strategy (API v21 compatible) 
-            # For now, use manual CPC which we know works
-            manual_cpc = client.get_type("ManualCpc")
-            campaign.manual_cpc = manual_cpc
-            
-            # TODO: Add other bidding strategies once we figure out the correct API v21 syntax
+            # Set bidding strategy (API v21 compatible)
+            strategy = bidding_strategy.upper() if bidding_strategy else "MANUAL_CPC"
+            if strategy == "MAXIMIZE_CLICKS":
+                maximize_clicks = client.get_type("MaximizeClicks")
+                campaign.maximize_clicks = maximize_clicks
+            elif strategy == "MAXIMIZE_CONVERSIONS":
+                maximize_conversions = client.get_type("MaximizeConversions")
+                campaign.maximize_conversions = maximize_conversions
+            elif strategy == "TARGET_CPA":
+                target_cpa = client.get_type("TargetCpa")
+                campaign.target_cpa = target_cpa
+            else:
+                # Default: MANUAL_CPC
+                manual_cpc = client.get_type("ManualCpc")
+                campaign.manual_cpc = manual_cpc
                 
             # Set dates
             if start_date:
@@ -100,8 +109,9 @@ class CampaignTools:
                 campaign.network_settings.target_search_network = True
                 campaign.network_settings.target_partner_search_network = False
                 
-            # Set campaign status
-            campaign.status = client.enums.CampaignStatusEnum.ENABLED
+            # Set campaign status — SIEMPRE PAUSED al crear (contrato del skill
+            # /ads-create-campaign: el usuario activa manualmente; evita gasto accidental)
+            campaign.status = client.enums.CampaignStatusEnum.PAUSED
             
             # Set required API v21 fields - use proper enum for EU political advertising
             # DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING since we're targeting non-EU only
@@ -333,8 +343,8 @@ class CampaignTools:
                 conditions.append(f"campaign.advertising_channel_type = '{campaign_type.upper()}'")
                 
             if conditions:
-                query += " AND " + " AND ".join(conditions)
-                
+                query += " WHERE " + " AND ".join(conditions)
+
             query += " ORDER BY campaign.name"
             
             response = googleads_service.search(
@@ -386,8 +396,6 @@ class CampaignTools:
                     campaign_budget.amount_micros,
                     campaign_budget.delivery_method,
                     campaign.bidding_strategy_type,
-                    campaign.start_date,
-                    campaign.end_date,
                     campaign.network_settings.target_google_search,
                     campaign.network_settings.target_search_network,
                     campaign.network_settings.target_partner_search_network,
@@ -397,8 +405,7 @@ class CampaignTools:
                     metrics.cost_micros,
                     metrics.conversions,
                     metrics.average_cpc,
-                    metrics.ctr,
-                    metrics.conversions
+                    metrics.ctr
                 FROM campaign
                 WHERE campaign.id = {campaign_id}
                     AND segments.date DURING LAST_30_DAYS
@@ -423,10 +430,6 @@ class CampaignTools:
                             "delivery_method": row.campaign_budget.delivery_method.name,
                         },
                         "bidding_strategy": row.campaign.bidding_strategy_type.name,
-                        "dates": {
-                            "start": row.campaign.start_date,
-                            "end": row.campaign.end_date,
-                        },
                         "network_settings": {
                             "google_search": row.campaign.network_settings.target_google_search,
                             "search_network": row.campaign.network_settings.target_search_network,

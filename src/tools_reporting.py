@@ -35,7 +35,7 @@ class ReportingTools:
             if not metrics:
                 metrics = [
                     "clicks", "impressions", "cost_micros", "conversions",
-                    "ctr", "average_cpc", "conversion_rate", "cost_per_conversion"
+                    "ctr", "average_cpc", "cost_per_conversion"
                 ]
                 
             # Build metrics selection
@@ -75,17 +75,22 @@ class ReportingTools:
                 # Process each metric
                 for metric in metrics:
                     value = getattr(row.metrics, metric)
-                    
+
                     # Format currency metrics
                     if metric.endswith("_micros"):
                         campaign_data["metrics"][metric.replace("_micros", "")] = micros_to_currency(value)
                         total_metrics[metric] += value
-                    elif metric in ["ctr", "conversion_rate"]:
+                    elif metric in ["ctr"]:
                         campaign_data["metrics"][metric] = f"{value:.2%}"
                         total_metrics[metric] += value
                     else:
                         campaign_data["metrics"][metric] = value
                         total_metrics[metric] += value
+
+                # Compute conversion_rate manually
+                clicks = getattr(row.metrics, "clicks", 0)
+                conversions = getattr(row.metrics, "conversions", 0)
+                campaign_data["metrics"]["conversion_rate"] = f"{(conversions / clicks * 100):.2f}%" if clicks > 0 else "0.00%"
                         
                 campaigns.append(campaign_data)
                 
@@ -94,7 +99,7 @@ class ReportingTools:
             for metric, value in total_metrics.items():
                 if metric.endswith("_micros"):
                     formatted_totals[metric.replace("_micros", "")] = micros_to_currency(value)
-                elif metric in ["ctr", "conversion_rate"]:
+                elif metric in ["ctr"]:
                     # Calculate weighted average for rates
                     if len(campaigns) > 0:
                         formatted_totals[metric] = f"{value/len(campaigns):.2%}"
@@ -102,6 +107,11 @@ class ReportingTools:
                         formatted_totals[metric] = "0.00%"
                 else:
                     formatted_totals[metric] = value
+
+            # Compute total conversion_rate manually
+            total_clicks = total_metrics.get("clicks", 0)
+            total_conversions = total_metrics.get("conversions", 0)
+            formatted_totals["conversion_rate"] = f"{(total_conversions / total_clicks * 100):.2f}%" if total_clicks > 0 else "0.00%"
                     
             return {
                 "success": True,
@@ -142,7 +152,6 @@ class ReportingTools:
                     metrics.conversions,
                     metrics.ctr,
                     metrics.average_cpc,
-                    metrics.conversions,
                     metrics.cost_per_conversion
                 FROM ad_group
                 WHERE segments.date DURING {date_range}
@@ -219,9 +228,7 @@ class ReportingTools:
                     metrics.cost_micros,
                     metrics.conversions,
                     metrics.ctr,
-                    metrics.average_cpc,
-                    metrics.conversions,
-                    metrics.average_position
+                    metrics.average_cpc
                 FROM keyword_view
                 WHERE segments.date DURING {date_range}
                     AND ad_group_criterion.type = 'KEYWORD'
@@ -259,17 +266,16 @@ class ReportingTools:
                         "ctr": f"{row.metrics.ctr:.2%}",
                         "average_cpc": micros_to_currency(row.metrics.average_cpc),
                         "conversion_rate": f"{(row.metrics.conversions / row.metrics.clicks * 100):.2f}%" if row.metrics.clicks > 0 else "0.00%",
-                        "average_position": f"{row.metrics.average_position:.1f}" if row.metrics.average_position else "N/A",
                     },
                 })
-                
+
             return {
                 "success": True,
                 "date_range": date_range,
                 "keywords": keywords,
                 "count": len(keywords),
             }
-            
+
         except GoogleAdsException as e:
             logger.error(f"Failed to get keyword performance: {e}")
             return self.error_handler.format_error_response(e)
